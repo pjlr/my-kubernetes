@@ -1,0 +1,928 @@
+Running a Full-Stack Application in Kubernetes with Nginx, Node.js, and MongoDB
+MongoDB
+1. Write & Create Persistent Volume template for MongoDB.
+2. Write & Create ConfigMap and Statefult-set template for MongoDB.
+3. Write & Create Service template for MongoDB.
+Node-JS
+1. Write & Create Persistent Volume & Persistent Volume Claim template for Node-JS.
+2. Write & Create ConfigMap and Deployment template for Node-JS.
+3. Write & Create Service template for Node-JS.
+Nginx
+1. Write & Create Persistent Volume & Persistent Volume Claim template for Nginx.
+2. Write & Create ConfigMap and Deployment template for Nginx.
+3. Write & Create Service template for Nginx.
+Prerequisites
+Create Project Namespace.
+# Switch to Kubernetes starter-kit directory.
+$ cd /opt/kickstart-kubernetes
+ 
+# Create Kubernetes Namespace.
+$ kubectl create namespace sloopstash-stg-ctm
+Create Project Tree Structure
+# Create necessary directories.
+$ mkdir -p persistent-volume/ctm \
+  && mkdir -p persistent-volume-claim/ctm \
+  && mkdir -p stateful-set/ctm \
+  && mkdir -p deployment/ctm \
+  && mkdir -p service/ctm \
+  && mkdir -p ingress/ctm 
+ 
+# Create necessary files.
+$ touch persistent-volume/ctm/mongo-db.yml \
+  && touch persistent-volume/ctm/app.yml \
+  && touch persistent-volume/ctm/nginx.yml \
+  && touch persistent-volume-claim/ctm/app.yml \
+  && touch persistent-volume-claim/ctm/nginx.yml \
+  && touch stateful-set/ctm/mongo-db.yml \
+  && touch deployment/ctm/app.yml \
+  && touch deployment/ctm/nginx.yml \
+  && touch service/ctm/mongo-db.yml \
+  && touch service/ctm/app.yml \
+  && touch service/ctm/nginx.yml \
+  && touch ingress/ctm/nginx.yml
+PREPARE WORKER NODES 1 & 2
+# Download sample CTM app from GitHub to local filesystem path.
+$ sudo git clone https://github.com/sloopstash/sloopstash-ctm-app.git /opt/sloopstash-ctm-app
+ 
+# Change ownership of sample CRM app directory.
+$ sudo chown -R $USER:$USER /opt/sloopstash-ctm-app
+ 
+# Create necessary directories for Persistent Volumes.
+$ export ENVIRONMENT=stg
+$ sudo mkdir -p /mnt/sloopstash/${ENVIRONMENT}/ctm/mongo-db/data
+$ sudo mkdir -p /mnt/sloopstash/${ENVIRONMENT}/ctm/mongo-db/log
+$ sudo mkdir -p /mnt/sloopstash/${ENVIRONMENT}/ctm/app/log
+$ sudo mkdir -p /mnt/sloopstash/${ENVIRONMENT}/ctm/nginx/log
+$ sudo chmod -R ugo+rwx /mnt/sloopstash
+MongoDB
+Write Persistent Volume template for MongoDB
+$ nano persistent-volume/ctm/mongo-db.yml
+apiVersion: v1  
+kind: PersistentVolume  
+metadata:  
+  name: sloopstash-${ENVIRONMENT}-ctm-mongo-db-data  
+spec:  
+  storageClassName: standard  
+  capacity:  
+   storage: 2Gi  
+  volumeMode: Filesystem  
+  accessModes:  
+    - ReadWriteOnce  
+  persistentVolumeReclaimPolicy: Retain  
+  local:  
+    path: /mnt/sloopstash/${ENVIRONMENT}/ctm/mongo-db/data  
+  nodeAffinity:  
+    required:  
+      nodeSelectorTerms:  
+        - matchExpressions:  
+          - key: kubernetes.io/os  
+            operator: In  
+            values:  
+              - linux  
+          - key: node-role.kubernetes.io/worker  
+            operator: In  
+            values:  
+              - worker  
+          - key: type  
+            operator: In  
+            values:  
+              - on-premise  
+              - cloud  
+          - key: provider  
+            operator: In  
+            values:  
+              - host  
+              - aws  
+              - azure  
+          - key: service  
+            operator: In  
+            values:  
+              - virtualbox  
+              - ec2  
+              - eks  
+              - aks  
+          - key: region  
+            operator: In  
+            values:  
+              - local  
+              - ap-south-1  
+              - centralindia  
+          - key: availability_zone  
+            operator: In  
+            values:  
+              - local-b  
+              - local-c  
+              - ap-south-1b  
+              - zone-2  
+---  
+apiVersion: v1  
+kind: PersistentVolume  
+metadata:  
+  name: sloopstash-${ENVIRONMENT}-ctm-mongo-db-log  
+spec:  
+  storageClassName: standard  
+  capacity:  
+    storage: 1Gi  
+  volumeMode: Filesystem  
+  accessModes:  
+    - ReadWriteOnce  
+  persistentVolumeReclaimPolicy: Retain  
+  local:  
+    path: /mnt/sloopstash/${ENVIRONMENT}/ctm/mongo-db/log  
+  nodeAffinity:  
+    required:  
+      nodeSelectorTerms:  
+        - matchExpressions:  
+          - key: kubernetes.io/os  
+            operator: In  
+            values:  
+              - linux  
+          - key: node-role.kubernetes.io/worker  
+            operator: In  
+            values:  
+              - worker  
+          - key: type  
+            operator: In  
+            values:  
+              - on-premise  
+              - cloud  
+          - key: provider  
+            operator: In  
+            values:  
+              - host  
+              - aws  
+              - azure  
+          - key: service  
+            operator: In  
+            values:  
+              - virtualbox  
+              - ec2  
+              - eks  
+              - aks  
+          - key: region  
+            operator: In  
+            values:  
+              - local  
+              - ap-south-1  
+              - centralindia  
+          - key: availability_zone  
+            operator: In  
+            values:  
+              - local-b  
+              - local-c  
+              - ap-south-1b  
+              - zone-2
+Create PersistentVolume for MongoDB
+# Load envorionment variables.
+$ source var/STG.env
+ 
+# Create Kubernetes PersistentVolume.
+$ envsubst < persistent-volume/ctm/mongo-db.yml | kubectl apply -f -
+ 
+# Verify PersistentVolume
+$ kubectl get pv
+Create Configmap for MongoDB
+# Create Kubernetes ConfigMap.
+$  kubectl create configmap mongo-db \
+ --from-file=supervisor-server=workload/supervisor/conf/server.conf \
+ --from-file=mongo-db-supervisor=workload/mongo-db/4.4.4/conf/supervisor.ini \
+ --from-file=mongo-db-server=workload/mongo-db/4.4.4/conf/server.conf \
+ -n sloopstash-stg-ctm
+ 
+# Verify ConfigMap
+$ kubectl get cm -n sloopstash-stg-ctm
+Write a Stateful-Set template for MongoDB
+$ nano stateful-set/ctm/mongo-db.yml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo-db
+spec:
+  selector:
+    matchLabels:
+      service: mongo-db
+  replicas: 1
+  serviceName: mongo-db
+  template:
+    metadata:
+      labels:
+        service: mongo-db
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                      - linux
+                  - key: node-role.kubernetes.io/worker
+                    operator: In
+                    values:
+                      - worker
+                  - key: type
+                    operator: In
+                    values:
+                      - on-premise
+                      - cloud
+                  - key: provider
+                    operator: In
+                    values:
+                      - host
+                      - aws
+                      - azure
+                  - key: service
+                    operator: In
+                    values:
+                      - virtualbox
+                      - ec2
+                      - eks
+                      - aks
+                  - key: region
+                    operator: In
+                    values:
+                      - local
+                      - ap-south-1
+                      - centralindia
+                  - key: availability_zone
+                    operator: In
+                    values:
+                      - local-b
+                      - local-c
+                      - ap-south-1b
+                      - zone-2
+      containers:
+        - name: main
+          image: 'sloopstash/mongo-db:v4.4.4'
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/bin/supervisord
+          args:
+            - '-c'
+            - /etc/supervisord.conf
+          volumeMounts:
+            - name: mongo-db-data
+              mountPath: /opt/mongo-db/data
+            - name: mongo-db-log
+              mountPath: /opt/mongo-db/log
+            - name: supervisor-server
+              mountPath: /etc/supervisord.conf
+              subPath: supervisor-server
+            - name: mongo-db-supervisor
+              mountPath: /opt/mongo-db/system/supervisor.ini
+              subPath: mongo-db-supervisor
+            - name: mongo-db-server
+              mountPath: /opt/mongo-db/conf/server.conf
+              subPath: mongo-db-server
+          ports:
+            - containerPort: 7000
+          livenessProbe:
+            exec:
+              command:
+                - mongo
+                - '--port'
+                - '7000'
+                - '--eval'
+                - db.adminCommand('ping')
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            tcpSocket:
+              port: 7000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+        - name: log
+          image: 'sloopstash/mongo-db:v4.4.4'
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/bin/supervisord
+          args:
+            - '-c'
+            - /etc/supervisord.conf
+          volumeMounts:
+            - name: mongo-db-log
+              mountPath: /opt/mongo-db/log
+            - name: supervisor-server
+              mountPath: /etc/supervisord.conf
+              subPath: supervisor-server
+      volumes:
+        - name: mongo-db-data
+          persistentVolumeClaim:
+            claimName: mongo-db-data
+        - name: mongo-db-log
+          persistentVolumeClaim:
+            claimName: mongo-db-log
+        - name: supervisor-server
+          configMap:
+            name: mongo-db
+        - name: mongo-db-supervisor
+          configMap:
+            name: mongo-db
+        - name: mongo-db-server
+          configMap:
+            name: mongo-db
+  volumeClaimTemplates:
+    - metadata:
+        name: mongo-db-data
+      spec:
+        storageClassName: standard
+        volumeMode: Filesystem
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+    - metadata:
+        name: mongo-db-log
+      spec:
+        storageClassName: standard
+        volumeMode: Filesystem
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+Create StatefulSet for MongoDB
+# Create Kubernetes StatefulSet.
+$ envsubst < stateful-set/ctm/mongo-db.yml | kubectl apply -f - -n sloopstash-stg-ctm
+ 
+# Verify StatefulSet
+$ kubectl get sts -n sloopstash-stg-ctm
+Write a Service template for MongoDB
+$ nano service/ctm/mongo-db.yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-db
+  labels:
+    service: mongo-db
+spec:
+  ports:
+    - port: 7000
+      targetPort: 7000
+      protocol: TCP
+  selector:
+    service: mongo-db
+Create Service for MongoDB
+# Create Kubernetes Service.
+$ kubectl apply -f service/ctm/mongo-db.yml -n sloopstash-stg-ctm
+ 
+# Verify Service
+$ kubectl get svc -n sloopstash-stg-ctm
+ 
+# Kubernetes summary command
+$ kubectl get pvc,cm,sts,deploy,rs,ds,po,svc,ep,ing,pod -o wide -n sloopstash-stg-ctm
+ 
+# Verify MongoDB status
+$ kubectl exec -ti -n sloopstash-stg-ctm mongo-db-0 -c main -- /bin/sh
+$ supervisorctl status
+$ netstat -ntpl
+$ exit
+NodeJS App
+Write Persistent Volume template for Node-JS App
+$ nano persistent-volume/ctm/app.yml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: sloopstash-${ENVIRONMENT}-ctm-app-log
+spec:
+  storageClassName: standard
+  capacity:
+    storage: 2Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  local:
+    path: /mnt/sloopstash/${ENVIRONMENT}/ctm/app/log
+  claimRef:
+    namespace: sloopstash-${ENVIRONMENT}-ctm
+    name: app-log
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/os
+            operator: In
+            values:
+              - linux
+          - key: node-role.kubernetes.io/worker
+            operator: In
+            values:
+              - worker
+          - key: type
+            operator: In
+            values:
+              - on-premise
+              - cloud
+          - key: provider
+            operator: In
+            values:
+              - host
+              - aws
+              - azure
+          - key: service
+            operator: In
+            values:
+              - virtualbox
+              - ec2
+              - eks
+              - aks
+          - key: region
+            operator: In
+            values:
+              - local
+              - ap-south-1
+              - centralindia
+          - key: availability_zone
+            operator: In
+            values:
+              - local-c
+              - local-b
+              - ap-south-1a
+              - zone-1
+Create PersistentVolume for Node-JS app
+# Create Kubernetes PersistentVolume.
+$ envsubst < persistent-volume/ctm/app.yml | kubectl apply -f -
+ 
+# Verify PersistentVolume
+$ kubectl get pv
+Write Persistent Volume Claim for Node-JS App
+$ nano persistent-volume-claim/ctm/app.yml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-log
+spec:
+  storageClassName: standard
+  volumeName: sloopstash-${ENVIRONMENT}-ctm-app-log
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+Create PersistentVolumeClaim for Node-JS app
+# Create Kubernetes PersistentVolumeClaim.
+$ envsubst < persistent-volume-claim/ctm/app.yml | kubectl apply -f - -n sloopstash-stg-ctm
+ 
+# Verify PersistentVolume
+$ kubectl get pvc -n sloopstash-stg-ctm
+Create Configmap for Node-JS App
+# Create Kubernetes ConfigMap.
+$ kubectl create configmap app \
+--from-file=supervisor-server=workload/supervisor/conf/server.conf \
+--from-file=app-supervisor=stack/ctm/app/conf/supervisor.ini \
+-n sloopstash-stg-ctm
+ 
+# Verify ConfigMap
+$ kubectl get cm -n sloopstash-stg-ctm
+Write Deployment template for Node-JS App
+$ nano deployment/ctm/app.yml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  selector:
+    matchLabels:
+      service: app
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        service: app
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/os
+                  operator: In
+                  values:
+                    - linux
+                - key: node-role.kubernetes.io/worker
+                  operator: In
+                  values:
+                    - worker
+                - key: type
+                  operator: In
+                  values:
+                    - on-premise
+                    - cloud
+                - key: provider
+                  operator: In
+                  values:
+                    - host
+                    - aws
+                    - azure
+                - key: service
+                  operator: In
+                  values:
+                    - virtualbox
+                    - ec2
+                    - eks
+                    - aks
+                - key: region
+                  operator: In
+                  values:
+                    - local
+                    - ap-south-1
+                    - centralindia
+                - key: availability_zone
+                  operator: In
+                  values:
+                    - local-c
+                    - local-b
+                    - ap-south-1a
+                    - zone-1
+      containers:
+        - name: main
+          image: sloopstash/node-js:v14.16.0
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/bin/supervisord"]
+          args: ["-c", "/etc/supervisord.conf"]
+          volumeMounts:
+            - name: app-source
+              mountPath: /opt/app/source
+            - name: app-log
+              mountPath: /opt/app/log
+            - name: supervisor-server
+              mountPath: /etc/supervisord.conf
+              subPath: supervisor-server
+            - name: app-supervisor
+              mountPath: /opt/app/system/supervisor.ini
+              subPath: app-supervisor
+          ports:
+            - containerPort: 2000
+          livenessProbe:
+            httpGet:
+              scheme: HTTP
+              path: /health
+              port: 2000
+              httpHeaders:
+                - name: Host
+                  value: app.ctm
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            exec:
+              command:
+                - "/usr/bin/supervisorctl"
+                - "status"
+                - "app"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+        - name: log
+          image: sloopstash/node-js:v14.16.0
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/bin/supervisord"]
+          args: ["-c", "/etc/supervisord.conf"]
+          volumeMounts:
+            - name: app-log
+              mountPath: /opt/app/log
+            - name: supervisor-server
+              mountPath: /etc/supervisord.conf
+              subPath: supervisor-server
+      volumes:
+        - name: app-source
+          hostPath:
+            path: ${CTM_APP_SOURCE}
+            type: Directory
+        - name: app-log
+          persistentVolumeClaim:
+            claimName: app-log
+        - name: supervisor-server
+          configMap:
+            name: app
+        - name: app-supervisor
+          configMap:
+            name: app
+Create Deployment for Node-JS app
+Create Kubernetes Deployment.
+$ envsubst < deployment/ctm/app.yml | kubectl apply -f - -n sloopstash-stg-ctm
+ 
+# Verify Deployment
+$ kubectl get deploy -n sloopstash-stg-ctm
+Write a Service template for Node-JS App
+$ nano service/ctm/app.yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+  labels:
+    service: app
+spec:
+  ports:
+    - port: 2000
+      targetPort: 2000
+      protocol: TCP
+  selector:
+    service: app
+Create Service for Node-JS app
+# Create Kubernetes Service.
+$ kubectl apply -f service/ctm/app.yml -n sloopstash-stg-ctm
+ 
+# Verify Service
+$ kubectl get svc -n sloopstash-stg-ctm
+ 
+# Kubernetes summary command
+$ kubectl get pvc,cm,sts,deploy,rs,ds,po,svc,ep,ing,pod -o wide -n sloopstash-stg-ctm
+ 
+# Verify MongoDB status 
+$ kubectl exec -ti -n sloopstash-stg-ctm app-xxxx-xxxx -c main -- /bin/sh 
+$ supervisorctl status
+$ netstat -ntpl
+$ exit
+Nginx
+Write Persistent Volume template for Nginx
+$ nano persistent-volume/ctm/nginx.yml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: sloopstash-${ENVIRONMENT}-ctm-nginx-log
+spec:
+  storageClassName: standard
+  capacity:
+    storage: 2Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  local:
+    path: /mnt/sloopstash/${ENVIRONMENT}/ctm/nginx/log
+  claimRef:
+    namespace: sloopstash-${ENVIRONMENT}-ctm
+    name: nginx-log
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/os
+            operator: In
+            values:
+              - linux
+          - key: node-role.kubernetes.io/worker
+            operator: In
+            values:
+              - worker
+          - key: type
+            operator: In
+            values:
+              - on-premise
+              - cloud
+          - key: provider
+            operator: In
+            values:
+              - host
+              - aws
+              - azure
+          - key: service
+            operator: In
+            values:
+              - virtualbox
+              - ec2
+              - eks
+              - aks
+          - key: region
+            operator: In
+            values:
+              - local
+              - ap-south-1
+              - centralindia
+          - key: availability_zone
+            operator: In
+            values:
+              - local-b
+              - local-c
+              - ap-south-1b
+              - zone-2
+Create Persistent Volume for Nginx
+# Create Kubernetes Persistent Volume for Nginx.
+$ envsubst < persistent-volume/ctm/nginx.yml | kubectl apply -f -
+ 
+# Verify Persistent Volume
+$ kubectl get pv 
+Write Persistent Volume Claim for Nginx
+$ nano persistent-volume-claim/ctm/nginx.yml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nginx-log
+spec:
+  storageClassName: standard
+  volumeName: sloopstash-${ENVIRONMENT}-ctm-nginx-log
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+# Create Kubernetes Persistent Volume Claim for Nginx.
+$ envsubst < persistent-volume-claim/ctm/nginx.yml | kubectl apply -f - -n sloopstash-stg-ctm
+ 
+# Verify Persistent Volume
+$ kubectl get pvc  -n sloopstash-stg-ctm
+Create Configmap for Nginx
+# Create Kubernetes ConfigMap.
+$ kubectl create configmap nginx \
+--from-file=supervisor-server=workload/supervisor/conf/server.conf \
+--from-file=nginx-supervisor=workload/nginx/1.14.0/conf/supervisor.ini \
+--from-file=nginx-server=workload/nginx/1.14.0/conf/server.conf \
+--from-file=nginx-app=stack/ctm/nginx/conf/app.conf \
+-n sloopstash-stg-ctm
+ 
+# Verify ConfigMap
+$ kubectl get cm -n sloopstash-stg-ctm
+Write Deployment template for Nginx
+$ nano deployment/ctm/nginx.yml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+spec:
+  selector:
+    matchLabels:
+      service: nginx
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        service: nginx
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/os
+                  operator: In
+                  values:
+                    - linux
+                - key: node-role.kubernetes.io/worker
+                  operator: In
+                  values:
+                    - worker
+                - key: type
+                  operator: In
+                  values:
+                    - on-premise
+                    - cloud
+                - key: provider
+                  operator: In
+                  values:
+                    - host
+                    - aws
+                    - azure
+                - key: service
+                  operator: In
+                  values:
+                    - virtualbox
+                    - ec2
+                    - eks
+                    - aks
+                - key: region
+                  operator: In
+                  values:
+                    - local
+                    - ap-south-1
+                    - centralindia
+                - key: availability_zone
+                  operator: In
+                  values:
+                    - local-b
+                    - local-c
+                    - ap-south-1b
+                    - zone-2
+      containers:
+        - name: main
+          image: sloopstash/nginx:v1.14.0
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/bin/supervisord"]
+          args: ["-c", "/etc/supervisord.conf"]
+          volumeMounts:
+            - name: app-source
+              mountPath: /opt/app/source
+            - name: nginx-log
+              mountPath: /opt/nginx/log
+            - name: supervisor-server
+              mountPath: /etc/supervisord.conf
+              subPath: supervisor-server
+            - name: nginx-supervisor
+              mountPath: /opt/nginx/system/supervisor.ini
+              subPath: nginx-supervisor
+            - name: nginx-server
+              mountPath: /opt/nginx/conf/server.conf
+              subPath: nginx-server
+            - name: nginx-app
+              mountPath: /opt/nginx/conf/app.conf
+              subPath: nginx-app
+          ports:
+            - containerPort: 80
+          livenessProbe:
+            httpGet:
+              scheme: HTTP
+              path: /
+              port: 80
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            exec:
+              command:
+                - "/usr/bin/supervisorctl"
+                - "status"
+                - "nginx"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+        - name: log
+          image: sloopstash/nginx:v1.14.0
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/bin/supervisord"]
+          args: ["-c", "/etc/supervisord.conf"]
+          volumeMounts:
+            - name: nginx-log
+              mountPath: /opt/nginx/log
+            - name: supervisor-server
+              mountPath: /etc/supervisord.conf
+              subPath: supervisor-server
+      volumes:
+        - name: app-source
+          hostPath:
+            path: ${CRM_APP_SOURCE}
+            type: Directory
+        - name: nginx-log
+          persistentVolumeClaim:
+            claimName: nginx-log
+        - name: supervisor-server
+          configMap:
+            name: nginx
+        - name: nginx-supervisor
+          configMap:
+            name: nginx
+        - name: nginx-server
+          configMap:
+            name: nginx
+        - name: nginx-app
+          configMap:
+            name: nginx
+Create Deployment for Nginx
+# Create Kubernetes Deployment for Nginx.
+$ envsubst < deployment/ctm/nginx.yml | kubectl apply -f - -n sloopstash-stg-ctm
+ 
+# Verify Deployment
+$ kubectl get deploy  -n sloopstash-stg-ctm
+Write a Service template for Nginx
+$ nano service/ctm/nginx.yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  labels:
+    service: nginx
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      nodePort: ${CTM_NGINX_PORT}
+      targetPort: 80
+      protocol: TCP
+  selector:
+    service: nginx
+Create Service for Nginx
+# Create Kubernetes Service for Nginx.
+$ envsubst < service/ctm/nginx.yml | kubectl apply -f - -n sloopstash-stg-ctm
+ 
+ 
+# Verify Service
+$ kubectl get svc  -n sloopstash-stg-ctm
+Open Notepad as an administrator, then go to File -> Open and navigate to C:\Windows\System32\drivers\etc\hosts. Browse to the path, open the hosts file, and add the following configuration to the last line.
+
+192.168.101.61      app.ctm.sloopstash.qaa
+192.168.101.61      app.ctm.sloopstash.qab
+192.168.101.61      app.ctm.sloopstash.stg
+Access Node-JS App
+http://app.ctm.sloopstash.stg:30002/health
+
+http://app.ctm.sloopstash.stg:30002/dashboard
+
+http://app.ctm.sloopstash.stg:30002/account/create?id=1&name=abc
+
+http://app.ctm.sloopstash.stg:30002/account/create?id=2&name=foo
+
+http://app.ctm.sloopstash.stg:30002/account/update?id=1&name=tuto
+
+http://app.ctm.sloopstash.stg:30002/account/delete?id=2
+
+Remove Created Resources.
+# Delete Kubernetes Namespace.
+$ kubectl delete namespace sloopstash-stg-ctm
+ 
+# Create Kubernetes PersistentVolume.
+$ envsubst < persistent-volume/ctm/mongo-db.yml | kubectl delete -f -
+$ envsubst < persistent-volume/ctm/app.yml | kubectl delete -f -
+$ envsubst < persistent-volume/ctm/nginx.yml | kubectl delete -f -
